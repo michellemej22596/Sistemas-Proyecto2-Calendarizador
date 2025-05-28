@@ -5,8 +5,13 @@
 
 struct Recurso {
     std::string nombre;
-    int contador;
-    std::mutex mutex;
+    int contador; // cantidad inicial del recurso
+    int disponible; // recursos disponibles actualmente
+
+    // Mutex y condición para simular semáforos
+    std::mutex mtx;
     std::condition_variable cv;
-    int disponible;
+
+    Recurso(std::string nombre_, int cantidad_)
+        : nombre(nombre_), contador(cantidad_), disponible(cantidad_) {}
 };
