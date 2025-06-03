@@ -1,4 +1,3 @@
-// simulador.cpp
 #include "simulador.hpp"
 #include "proceso.hpp"
 #include <iostream>
@@ -98,7 +97,7 @@ void ejecutarSimulacion(const std::vector<Accion>& acciones, const std::vector<R
 
 // -------------------- NUEVA FUNCIÓN: FCFS --------------------
 
-void simularFCFS(const std::vector<Proceso>& procesos, int ciclosMax = 30) {
+void simularFCFS(const std::vector<Proceso>& procesos, int ciclosMax) {
     std::vector<ProcesoFCFS> todos;
     for (const auto& p : procesos)
         todos.emplace_back(p);
@@ -299,4 +298,84 @@ void simularRoundRobin(const std::vector<Proceso>& procesosOriginal, int quantum
 
     std::cout << "\nPromedio WT: " << totalWT / procesos.size()
               << ", Promedio TAT: " << totalTAT / procesos.size() << "\n";
+}
+
+void simularSRTF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
+    std::cout << "\n=== Simulación SRTF ===\n";
+
+    struct ProcesoSRTF {
+        Proceso base;
+        int tiempoRestante;
+        int tiempoInicio = -1;
+        int tiempoFinal = -1;
+
+        ProcesoSRTF(const Proceso& p) : base(p), tiempoRestante(p.burstTime) {}
+    };
+
+    std::vector<ProcesoSRTF> procesos;
+    for (const auto& p : procesosOriginal)
+        procesos.emplace_back(p);
+
+    std::vector<ProcesoSRTF*> listos;
+    ProcesoSRTF* ejecutando = nullptr;
+    int ciclo = 0;
+
+    while (ciclo <= ciclosMax) {
+        for (auto& p : procesos) {
+            if (p.base.arrivalTime == ciclo) {
+                listos.push_back(&p);
+                std::cout << ">> Proceso " << p.base.pid << " ha llegado al ciclo " << ciclo << "\n";
+            }
+        }
+
+        if (!listos.empty()) {
+            std::sort(listos.begin(), listos.end(), [](ProcesoSRTF* a, ProcesoSRTF* b) {
+                return a->tiempoRestante < b->tiempoRestante;
+            });
+
+            if (!ejecutando || ejecutando->tiempoRestante > listos.front()->tiempoRestante) {
+                if (ejecutando && ejecutando->tiempoRestante > 0) {
+                    std::cout << ">> Proceso " << ejecutando->base.pid << " fue interrumpido en ciclo " << ciclo << "\n";
+                    listos.push_back(ejecutando);
+                }
+
+                ejecutando = listos.front();
+                listos.erase(listos.begin());
+
+                if (ejecutando->tiempoInicio == -1)
+                    ejecutando->tiempoInicio = ciclo;
+
+                std::cout << ">> Proceso " << ejecutando->base.pid << " inicia/reanuda ejecución en ciclo " << ciclo << "\n";
+            }
+        }
+
+        if (ejecutando) {
+            std::cout << "Ciclo " << ciclo << ": ejecutando " << ejecutando->base.pid << "\n";
+            ejecutando->tiempoRestante--;
+
+            if (ejecutando->tiempoRestante == 0) {
+                ejecutando->tiempoFinal = ciclo + 1;
+                std::cout << ">> Proceso " << ejecutando->base.pid << " finalizó en ciclo " << ciclo + 1 << "\n";
+                ejecutando = nullptr;
+            }
+        } else {
+            std::cout << "Ciclo " << ciclo << ": CPU ociosa\n";
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        ciclo++;
+    }
+
+    std::cout << "\n--- Métricas SRTF ---\n";
+    double totalWT = 0, totalTAT = 0;
+    for (const auto& p : procesos) {
+        int tat = p.tiempoFinal - p.base.arrivalTime;
+        int wt = tat - p.base.burstTime;
+        totalTAT += tat;
+        totalWT += wt;
+        std::cout << p.base.pid << " - WT: " << wt << ", TAT: " << tat << "\n";
+    }
+
+    std::cout << "\nPromedio WT: " << totalWT / procesos.size()
+              << ", Promedio TAT: " << totalTAT / procesos.size() << "\n";
 }
