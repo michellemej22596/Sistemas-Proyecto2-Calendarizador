@@ -377,5 +377,5 @@ void simularSRTF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
     }
 
     std::cout << "\nPromedio WT: " << totalWT / procesos.size()
-              << ", Promedio TAT: " << totalTAT / procesos.size() << "\n";
+              << ", Promedio TAT: " << totalTAT / procesos.size() << "\n";
 }
