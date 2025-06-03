@@ -97,31 +97,21 @@ void ejecutarSimulacion(const std::vector<Accion>& acciones, const std::vector<R
     std::cout << "\n=== Simulación finalizada ===" << std::endl;
 }
 
-void simularFCFS(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
-    std::cout << "\n=== Simulación FCFS ===\n";
-
-    struct ProcesoFCFS {
-        Proceso base;
-        int tiempoRestante;
-        int tiempoInicio = -1;
-        int tiempoFinal = -1;
-
-        ProcesoFCFS(const Proceso& p) : base(p), tiempoRestante(p.burstTime) {}
-    };
-
-    std::vector<ProcesoFCFS> procesos;
-    for (const auto& p : procesosOriginal) {
-        procesos.emplace_back(p);
-    }
-
-    std::vector<EventoGantt> gantt;  
+void simularFCFS(const std::vector<Proceso>& procesos, int ciclosMax) {
+    std::vector<ProcesoFCFS> todos;
+    for (const auto& p : procesos)
+        todos.emplace_back(p);
 
     std::queue<ProcesoFCFS*> colaListos;
-    int ciclo = 0;
     ProcesoFCFS* ejecutando = nullptr;
+    int ciclo = 0;
+
+    std::vector<EventoGantt> eventosGantt;
+
+    std::cout << "\n=== Simulación FCFS ===\n";
 
     while (ciclo <= ciclosMax) {
-        for (auto& p : procesos) {
+        for (auto& p : todos) {
             if (p.base.arrivalTime == ciclo) {
                 colaListos.push(&p);
                 std::cout << ">> Proceso " << p.base.pid << " ha llegado al ciclo " << ciclo << "\n";
@@ -142,31 +132,39 @@ void simularFCFS(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
             if (ejecutando->tiempoRestante == 0) {
                 ejecutando->tiempoFinal = ciclo + 1;
                 std::cout << ">> Proceso " << ejecutando->base.pid << " finalizó en ciclo " << ciclo + 1 << "\n";
-                gantt.push_back({ ejecutando->base.pid, ejecutando->tiempoInicio, ejecutando->tiempoFinal });  // ✅ agregar evento
+
+                // Guardar evento de Gantt
+                eventosGantt.push_back({
+                    ejecutando->base.pid,
+                    ejecutando->tiempoInicio,
+                    ejecutando->tiempoFinal
+                });
+
                 ejecutando = nullptr;
             }
         } else {
             std::cout << "Ciclo " << ciclo << ": CPU ociosa\n";
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
         ciclo++;
     }
 
     std::cout << "\n--- Métricas FCFS ---\n";
     double totalWT = 0, totalTAT = 0;
-    for (const auto& p : procesos) {
+    for (const auto& p : todos) {
         int tat = p.tiempoFinal - p.base.arrivalTime;
-        int wt = tat - p.base.burstTime;
+        int wt = p.tiempoInicio - p.base.arrivalTime;
         totalTAT += tat;
         totalWT += wt;
         std::cout << p.base.pid << " - WT: " << wt << ", TAT: " << tat << "\n";
     }
 
-    std::cout << "\nPromedio WT: " << totalWT / procesos.size()
-              << ", Promedio TAT: " << totalTAT / procesos.size() << "\n";
+    std::cout << "\nPromedio WT: " << totalWT / todos.size()
+              << ", Promedio TAT: " << totalTAT / todos.size() << "\n";
 
-    guardarGanttCSV(gantt, "gantt_fcfs.csv");
+    // Guardar Gantt corregido
+    guardarGanttCSV(eventosGantt, "gantt_fcfs.csv");
 }
 
 void simularSJF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
@@ -315,18 +313,28 @@ void simularRoundRobin(const std::vector<Proceso>& procesosOriginal, int quantum
         ciclo++;
     }
 
+    // Calcular métricas
     std::cout << "\n--- Métricas Round Robin ---\n";
     double totalWT = 0, totalTAT = 0;
-    for (const auto& p : procesos) {
-        int tat = p.tiempoFinal - p.base.arrivalTime;
-        int wt = tat - p.base.burstTime;
-        totalTAT += tat;
-        totalWT += wt;
-        std::cout << p.base.pid << " - WT: " << wt << ", TAT: " << tat << "\n";
+
+    std::unordered_map<std::string, int> tiempoEjecutado;
+    std::unordered_map<std::string, int> tiempoFinal;
+
+    for (const auto& e : gantt) {
+        tiempoEjecutado[e.pid] += (e.fin - e.inicio);
+        tiempoFinal[e.pid] = std::max(tiempoFinal[e.pid], e.fin);
     }
 
-    std::cout << "\nPromedio WT: " << totalWT / procesos.size()
-              << ", Promedio TAT: " << totalTAT / procesos.size() << "\n";
+    for (const auto& p : procesosOriginal) {
+        int tat = tiempoFinal[p.pid] - p.arrivalTime;
+        int wt = tat - p.burstTime;
+        totalTAT += tat;
+        totalWT += wt;
+        std::cout << p.pid << " - WT: " << wt << ", TAT: " << tat << "\n";
+    }
+
+    std::cout << "\nPromedio WT: " << totalWT / procesosOriginal.size()
+              << ", Promedio TAT: " << totalTAT / procesosOriginal.size() << "\n";
 
     guardarGanttCSV(gantt, "gantt_rr.csv");
 }
