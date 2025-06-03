@@ -2,28 +2,40 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <algorithm>  // para std::remove
 
 // Función para cargar los procesos desde el archivo
 std::vector<Proceso> Parser::cargarProcesos(const std::string& ruta) {
     std::vector<Proceso> procesos;
     std::ifstream file(ruta);
 
-    // Verificar si el archivo se abre correctamente
     if (!file.is_open()) {
         std::cerr << "Error al abrir el archivo: " << ruta << std::endl;
-        return procesos;  // Regresar vacío si no se puede abrir el archivo
+        return procesos;
     }
 
     std::string linea;
     while (std::getline(file, linea)) {
         std::istringstream ss(linea);
-        std::string pid;
-        int bt, at, prio;
-        char coma;
+        std::string pid, bt_str, at_str, prio_str;
 
-        // Validación de la entrada de los datos
-        if (ss >> pid >> coma >> bt >> coma >> at >> coma >> prio) {
-            procesos.push_back({pid, bt, at, prio});
+        if (std::getline(ss, pid, ',') &&
+            std::getline(ss, bt_str, ',') &&
+            std::getline(ss, at_str, ',') &&
+            std::getline(ss, prio_str)) {
+            
+            // Quitar espacios
+            pid.erase(remove(pid.begin(), pid.end(), ' '), pid.end());
+            bt_str.erase(remove(bt_str.begin(), bt_str.end(), ' '), bt_str.end());
+            at_str.erase(remove(at_str.begin(), at_str.end(), ' '), at_str.end());
+            prio_str.erase(remove(prio_str.begin(), prio_str.end(), ' '), prio_str.end());
+
+            procesos.push_back({
+                pid,
+                std::stoi(bt_str),
+                std::stoi(at_str),
+                std::stoi(prio_str)
+            });
         } else {
             std::cerr << "Formato incorrecto en la línea: " << linea << std::endl;
         }
@@ -37,7 +49,6 @@ std::vector<Recurso> Parser::cargarRecursos(const std::string& ruta) {
     std::vector<Recurso> recursos;
     std::ifstream file(ruta);
 
-    // Verificar si el archivo se abre correctamente
     if (!file.is_open()) {
         std::cerr << "Error al abrir el archivo: " << ruta << std::endl;
         return recursos;
@@ -46,12 +57,15 @@ std::vector<Recurso> Parser::cargarRecursos(const std::string& ruta) {
     std::string linea;
     while (std::getline(file, linea)) {
         std::istringstream ss(linea);
-        std::string nombre;
-        int cantidad;
+        std::string nombre, cantidadStr;
 
-        // Validar y limpiar la entrada de los recursos
-        if (std::getline(ss, nombre, ',') && ss >> cantidad) {
-            recursos.emplace_back(nombre, cantidad);
+        if (std::getline(ss, nombre, ',') &&
+            std::getline(ss, cantidadStr)) {
+            
+            nombre.erase(remove(nombre.begin(), nombre.end(), ' '), nombre.end());
+            cantidadStr.erase(remove(cantidadStr.begin(), cantidadStr.end(), ' '), cantidadStr.end());
+
+            recursos.emplace_back(nombre, std::stoi(cantidadStr));
         } else {
             std::cerr << "Formato incorrecto en la línea de recursos: " << linea << std::endl;
         }
@@ -65,7 +79,6 @@ std::vector<Accion> Parser::cargarAcciones(const std::string& ruta) {
     std::vector<Accion> acciones;
     std::ifstream file(ruta);
 
-    // Verificar si el archivo se abre correctamente
     if (!file.is_open()) {
         std::cerr << "Error al abrir el archivo: " << ruta << std::endl;
         return acciones;
@@ -74,13 +87,25 @@ std::vector<Accion> Parser::cargarAcciones(const std::string& ruta) {
     std::string linea;
     while (std::getline(file, linea)) {
         std::istringstream ss(linea);
-        std::string pid, tipoStr, recurso;
-        int ciclo;
-        char coma;
+        std::string pid, tipoStr, recurso, cicloStr;
 
-        // Validación de la entrada de acciones
-        if (ss >> pid >> coma >> tipoStr >> coma >> recurso >> coma >> ciclo) {
-            Accion acc = {pid, Accion::fromString(tipoStr), recurso, ciclo};
+        if (std::getline(ss, pid, ',') &&
+            std::getline(ss, tipoStr, ',') &&
+            std::getline(ss, recurso, ',') &&
+            std::getline(ss, cicloStr)) {
+            
+            // Limpiar espacios
+            pid.erase(remove(pid.begin(), pid.end(), ' '), pid.end());
+            tipoStr.erase(remove(tipoStr.begin(), tipoStr.end(), ' '), tipoStr.end());
+            recurso.erase(remove(recurso.begin(), recurso.end(), ' '), recurso.end());
+            cicloStr.erase(remove(cicloStr.begin(), cicloStr.end(), ' '), cicloStr.end());
+
+            Accion acc = {
+                pid,
+                Accion::fromString(tipoStr),
+                recurso,
+                std::stoi(cicloStr)
+            };
             acciones.push_back(acc);
         } else {
             std::cerr << "Formato incorrecto en la línea de acciones: " << linea << std::endl;
