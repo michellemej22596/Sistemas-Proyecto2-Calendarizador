@@ -154,3 +154,75 @@ void simularFCFS(const std::vector<Proceso>& procesos, int ciclosMax = 30) {
     std::cout << "\nPromedio WT: " << totalWT / todos.size()
               << ", Promedio TAT: " << totalTAT / todos.size() << "\n";
 }
+
+#include <algorithm>
+
+void simularSJF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
+    std::cout << "\n=== Simulación SJF ===\n";
+
+    auto procesos = procesosOriginal;  // Copia para no modificar el original
+    std::vector<Proceso> lista;
+    std::vector<Proceso> completados;
+    int ciclo = 0;
+    bool ejecutando = false;
+    Proceso actual;
+    int tiempoRestante = 0;
+
+    while (ciclo <= ciclosMax) {
+        for (const auto& p : procesos) {
+            if (p.arrivalTime == ciclo) {
+                std::cout << ">> Proceso " << p.pid << " ha llegado al ciclo " << ciclo << "\n";
+                lista.push_back(p);
+            }
+        }
+
+        if (!ejecutando && !lista.empty()) {
+            std::sort(lista.begin(), lista.end(), [](const Proceso& a, const Proceso& b) {
+                return a.burstTime < b.burstTime;
+            });
+
+            actual = lista.front();
+            tiempoRestante = actual.burstTime;
+            ejecutando = true;
+            lista.erase(lista.begin());
+
+            std::cout << ">> Proceso " << actual.pid << " inicia ejecución en ciclo " << ciclo << "\n";
+        }
+
+        if (ejecutando) {
+            std::cout << "Ciclo " << ciclo << ": ejecutando " << actual.pid << "\n";
+            tiempoRestante--;
+
+            if (tiempoRestante == 0) {
+                std::cout << ">> Proceso " << actual.pid << " finalizó en ciclo " << ciclo + 1 << "\n";
+                Proceso terminado = actual;
+                terminado.burstTime = ciclo + 1 - actual.arrivalTime;
+                completados.push_back(terminado);
+                ejecutando = false;
+            }
+        } else {
+            std::cout << "Ciclo " << ciclo << ": CPU ociosa\n";
+        }
+
+        ciclo++;
+    }
+
+    // Calcular métricas
+    std::cout << "\n--- Métricas SJF ---\n";
+    int totalWT = 0, totalTAT = 0;
+
+    for (const auto& p : completados) {
+        int tat = p.burstTime;
+        int wt = tat - procesosOriginal[std::distance(procesosOriginal.begin(), std::find_if(procesosOriginal.begin(), procesosOriginal.end(), [&](const Proceso& original) {
+            return original.pid == p.pid;
+        }))].burstTime;
+        totalTAT += tat;
+        totalWT += wt;
+        std::cout << p.pid << " - WT: " << wt << ", TAT: " << tat << "\n";
+    }
+
+    if (!completados.empty()) {
+        std::cout << "\nPromedio WT: " << (float)totalWT / completados.size()
+                  << ", Promedio TAT: " << (float)totalTAT / completados.size() << "\n";
+    }
+}
