@@ -226,3 +226,77 @@ void simularSJF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
                   << ", Promedio TAT: " << (float)totalTAT / completados.size() << "\n";
     }
 }
+
+void simularRoundRobin(const std::vector<Proceso>& procesosOriginal, int quantum, int ciclosMax) {
+    std::cout << "\n=== Simulación Round Robin (Quantum = " << quantum << ") ===\n";
+
+    struct ProcesoRR {
+        Proceso base;
+        int tiempoRestante;
+        int tiempoInicio = -1;
+        int tiempoFinal = -1;
+
+        ProcesoRR(const Proceso& p) : base(p), tiempoRestante(p.burstTime) {}
+    };
+
+    std::vector<ProcesoRR> procesos;
+    for (const auto& p : procesosOriginal) {
+        procesos.emplace_back(p);
+    }
+
+    std::queue<ProcesoRR*> colaListos;
+    int ciclo = 0;
+    int quantumRestante = quantum;
+    ProcesoRR* ejecutando = nullptr;
+
+    while (ciclo <= ciclosMax) {
+        for (auto& p : procesos) {
+            if (p.base.arrivalTime == ciclo) {
+                colaListos.push(&p);
+                std::cout << ">> Proceso " << p.base.pid << " ha llegado al ciclo " << ciclo << "\n";
+            }
+        }
+
+        if (!ejecutando && !colaListos.empty()) {
+            ejecutando = colaListos.front();
+            colaListos.pop();
+            if (ejecutando->tiempoInicio == -1)
+                ejecutando->tiempoInicio = ciclo;
+            quantumRestante = std::min(quantum, ejecutando->tiempoRestante);
+            std::cout << ">> Proceso " << ejecutando->base.pid << " inicia/reanuda ejecución en ciclo " << ciclo << "\n";
+        }
+
+        if (ejecutando) {
+            std::cout << "Ciclo " << ciclo << ": ejecutando " << ejecutando->base.pid << "\n";
+            ejecutando->tiempoRestante--;
+            quantumRestante--;
+
+            if (ejecutando->tiempoRestante == 0) {
+                ejecutando->tiempoFinal = ciclo + 1;
+                std::cout << ">> Proceso " << ejecutando->base.pid << " finalizó en ciclo " << ciclo + 1 << "\n";
+                ejecutando = nullptr;
+            } else if (quantumRestante == 0) {
+                colaListos.push(ejecutando);  // se vuelve a encolar
+                ejecutando = nullptr;
+            }
+        } else {
+            std::cout << "Ciclo " << ciclo << ": CPU ociosa\n";
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        ciclo++;
+    }
+
+    std::cout << "\n--- Métricas Round Robin ---\n";
+    double totalWT = 0, totalTAT = 0;
+    for (const auto& p : procesos) {
+        int tat = p.tiempoFinal - p.base.arrivalTime;
+        int wt = tat - p.base.burstTime;
+        totalTAT += tat;
+        totalWT += wt;
+        std::cout << p.base.pid << " - WT: " << wt << ", TAT: " << tat << "\n";
+    }
+
+    std::cout << "\nPromedio WT: " << totalWT / procesos.size()
+              << ", Promedio TAT: " << totalTAT / procesos.size() << "\n";
+}
