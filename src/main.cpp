@@ -4,10 +4,9 @@
 
 int main() {
     auto procesos = Parser::cargarProcesos("../data/procesos.txt");
-    auto recursos = Parser::cargarRecursos("../data/recursos.txt");
-    auto acciones = Parser::cargarAcciones("../data/acciones.txt");
 
-    ejecutarSimulacion(acciones, recursos, 20);  // 20 ciclos como máximo
+    // Ejecutar el algoritmo FCFS con un máximo de 30 ciclos
+    simularFCFS(procesos, 30);
 
     return 0;
 }

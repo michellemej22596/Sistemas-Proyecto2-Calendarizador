@@ -1,21 +1,34 @@
 // simulador.cpp
 #include "simulador.hpp"
+#include "proceso.hpp"
 #include <iostream>
 #include <thread>
 #include <map>
 #include <chrono>
 #include <unordered_map>
+#include <queue>
+#include <algorithm>
 
-// Mapeo global de recursos por nombre
+// -------------------- MÉTRICAS Y ESTRUCTURAS --------------------
+
+struct ProcesoFCFS {
+    Proceso base;
+    int tiempoInicio = -1;
+    int tiempoFinal = -1;
+    int tiempoRestante;
+
+    ProcesoFCFS(Proceso p)
+        : base(p), tiempoRestante(p.burstTime) {}
+};
+
+// -------------------- FUNCIONES EXISTENTES --------------------
+
 std::map<std::string, Recurso> recursosGlobales;
-
-// Métricas globales
 int totalAcciones = 0;
 int totalReads = 0;
 int totalWrites = 0;
 std::unordered_map<std::string, int> accesosPorProceso;
 
-// Función para ejecutar una acción
 void ejecutarAccion(const Accion& accion) {
     auto it = recursosGlobales.find(accion.recurso);
     if (it == recursosGlobales.end()) {
@@ -34,21 +47,17 @@ void ejecutarAccion(const Accion& accion) {
               << accion.recurso << " ("
               << (accion.tipo == TipoAccion::READ ? "READ" : "WRITE") << ")" << std::endl;
 
-    // Simulación de duración de la acción (1 ciclo = 500 ms)
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
     recurso.liberar();
 
     std::cout << "[LIBERADO] Proceso " << accion.pid << " liberó " << accion.recurso << std::endl;
 
-    // Registrar métricas
     totalAcciones++;
     if (accion.tipo == TipoAccion::READ) totalReads++;
     else if (accion.tipo == TipoAccion::WRITE) totalWrites++;
     accesosPorProceso[accion.pid]++;
 }
 
-// Simulador principal por ciclo
 void ejecutarSimulacion(const std::vector<Accion>& acciones, const std::vector<Recurso>& recursos, int ciclosMax) {
     for (const auto& r : recursos) {
         recursosGlobales.emplace(r.nombre, r);
@@ -74,7 +83,6 @@ void ejecutarSimulacion(const std::vector<Accion>& acciones, const std::vector<R
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 
-    // Mostrar métricas al final
     std::cout << "\n--- Resumen de métricas ---" << std::endl;
     std::cout << "Total de acciones ejecutadas: " << totalAcciones << std::endl;
     std::cout << "Acciones de lectura (READ): " << totalReads << std::endl;
@@ -85,5 +93,64 @@ void ejecutarSimulacion(const std::vector<Accion>& acciones, const std::vector<R
         std::cout << " - " << pid << ": " << count << " accesos" << std::endl;
     }
 
-    std::cout << "\n=== Simulación finalizada ==="  << std::endl;
+    std::cout << "\n=== Simulación finalizada ===" << std::endl;
+}
+
+// -------------------- NUEVA FUNCIÓN: FCFS --------------------
+
+void simularFCFS(const std::vector<Proceso>& procesos, int ciclosMax = 30) {
+    std::vector<ProcesoFCFS> todos;
+    for (const auto& p : procesos)
+        todos.emplace_back(p);
+
+    std::queue<ProcesoFCFS*> colaListos;
+    ProcesoFCFS* ejecutando = nullptr;
+    int ciclo = 0;
+
+    std::cout << "\n=== Simulación FCFS ===\n";
+
+    while (ciclo <= ciclosMax) {
+        for (auto& p : todos) {
+            if (p.base.arrivalTime == ciclo) {
+                colaListos.push(&p);
+                std::cout << ">> Proceso " << p.base.pid << " ha llegado al ciclo " << ciclo << "\n";
+            }
+        }
+
+        if (!ejecutando && !colaListos.empty()) {
+            ejecutando = colaListos.front();
+            colaListos.pop();
+            ejecutando->tiempoInicio = ciclo;
+            std::cout << ">> Proceso " << ejecutando->base.pid << " inicia ejecución en ciclo " << ciclo << "\n";
+        }
+
+        if (ejecutando) {
+            std::cout << "Ciclo " << ciclo << ": ejecutando " << ejecutando->base.pid << "\n";
+            ejecutando->tiempoRestante--;
+
+            if (ejecutando->tiempoRestante == 0) {
+                ejecutando->tiempoFinal = ciclo + 1;
+                std::cout << ">> Proceso " << ejecutando->base.pid << " finalizó en ciclo " << ciclo + 1 << "\n";
+                ejecutando = nullptr;
+            }
+        } else {
+            std::cout << "Ciclo " << ciclo << ": CPU ociosa\n";
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        ciclo++;
+    }
+
+    std::cout << "\n--- Métricas FCFS ---\n";
+    double totalWT = 0, totalTAT = 0;
+    for (const auto& p : todos) {
+        int tat = p.tiempoFinal - p.base.arrivalTime;
+        int wt = p.tiempoInicio - p.base.arrivalTime;
+        totalTAT += tat;
+        totalWT += wt;
+        std::cout << p.base.pid << " - WT: " << wt << ", TAT: " << tat << "\n";
+    }
+
+    std::cout << "\nPromedio WT: " << totalWT / todos.size()
+              << ", Promedio TAT: " << totalTAT / todos.size() << "\n";
 }
