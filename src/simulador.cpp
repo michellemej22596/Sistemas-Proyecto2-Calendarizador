@@ -4,9 +4,16 @@
 #include <thread>
 #include <map>
 #include <chrono>
+#include <unordered_map>
 
 // Mapeo global de recursos por nombre
 std::map<std::string, Recurso> recursosGlobales;
+
+// Métricas globales
+int totalAcciones = 0;
+int totalReads = 0;
+int totalWrites = 0;
+std::unordered_map<std::string, int> accesosPorProceso;
 
 // Función para ejecutar una acción
 void ejecutarAccion(const Accion& accion) {
@@ -33,12 +40,18 @@ void ejecutarAccion(const Accion& accion) {
     recurso.liberar();
 
     std::cout << "[LIBERADO] Proceso " << accion.pid << " liberó " << accion.recurso << std::endl;
+
+    // Registrar métricas
+    totalAcciones++;
+    if (accion.tipo == TipoAccion::READ) totalReads++;
+    else if (accion.tipo == TipoAccion::WRITE) totalWrites++;
+    accesosPorProceso[accion.pid]++;
 }
 
 // Simulador principal por ciclo
 void ejecutarSimulacion(const std::vector<Accion>& acciones, const std::vector<Recurso>& recursos, int ciclosMax) {
     for (const auto& r : recursos) {
-        recursosGlobales.emplace(r.nombre, r);  // Inserción segura sin constructor por defecto
+        recursosGlobales.emplace(r.nombre, r);
     }
 
     std::cout << "\n=== Iniciando simulación ===" << std::endl;
@@ -61,5 +74,16 @@ void ejecutarSimulacion(const std::vector<Accion>& acciones, const std::vector<R
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 
-    std::cout << "\n=== Simulación finalizada ===" << std::endl;
+    // Mostrar métricas al final
+    std::cout << "\n--- Resumen de métricas ---" << std::endl;
+    std::cout << "Total de acciones ejecutadas: " << totalAcciones << std::endl;
+    std::cout << "Acciones de lectura (READ): " << totalReads << std::endl;
+    std::cout << "Acciones de escritura (WRITE): " << totalWrites << std::endl;
+
+    std::cout << "\nAccesos por proceso:" << std::endl;
+    for (const auto& [pid, count] : accesosPorProceso) {
+        std::cout << " - " << pid << ": " << count << " accesos" << std::endl;
+    }
+
+    std::cout << "\n=== Simulación finalizada ==="  << std::endl;
 }
