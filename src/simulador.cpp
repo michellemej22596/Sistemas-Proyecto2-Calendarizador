@@ -379,3 +379,82 @@ void simularSRTF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
     std::cout << "\nPromedio WT: " << totalWT / procesos.size()
               << ", Promedio TAT: " << totalTAT / procesos.size() << "\n";
 }
+
+void simularPriority(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
+    std::cout << "\n=== Simulación Priority ===\n";
+
+    struct ProcesoPrioridad {
+        Proceso base;
+        int tiempoRestante;
+        int tiempoInicio = -1;
+        int tiempoFinal = -1;
+        bool completado = false;
+
+        ProcesoPrioridad(const Proceso& p) : base(p), tiempoRestante(p.burstTime) {}
+    };
+
+    std::vector<ProcesoPrioridad> procesos;
+    for (const auto& p : procesosOriginal) {
+        procesos.emplace_back(p);
+    }
+
+    int ciclo = 0;
+    ProcesoPrioridad* ejecutando = nullptr;
+
+    while (ciclo <= ciclosMax) {
+        for (auto& p : procesos) {
+            if (p.base.arrivalTime == ciclo) {
+                std::cout << ">> Proceso " << p.base.pid << " ha llegado al ciclo " << ciclo << "\n";
+            }
+        }
+
+        if (!ejecutando) {
+            std::vector<ProcesoPrioridad*> listos;
+            for (auto& p : procesos) {
+                if (!p.completado && p.base.arrivalTime <= ciclo)
+                    listos.push_back(&p);
+            }
+
+            if (!listos.empty()) {
+                std::sort(listos.begin(), listos.end(), [](ProcesoPrioridad* a, ProcesoPrioridad* b) {
+                    return a->base.priority < b->base.priority;  // menor valor = mayor prioridad
+                });
+
+                ejecutando = listos.front();
+                ejecutando->tiempoInicio = ciclo;
+                std::cout << ">> Proceso " << ejecutando->base.pid << " inicia ejecución en ciclo " << ciclo << "\n";
+            }
+        }
+
+        if (ejecutando) {
+            std::cout << "Ciclo " << ciclo << ": ejecutando " << ejecutando->base.pid << "\n";
+            ejecutando->tiempoRestante--;
+
+            if (ejecutando->tiempoRestante == 0) {
+                ejecutando->tiempoFinal = ciclo + 1;
+                ejecutando->completado = true;
+                std::cout << ">> Proceso " << ejecutando->base.pid << " finalizó en ciclo " << ciclo + 1 << "\n";
+                ejecutando = nullptr;
+            }
+        } else {
+            std::cout << "Ciclo " << ciclo << ": CPU ociosa\n";
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        ciclo++;
+    }
+
+    std::cout << "\n--- Métricas Priority ---\n";
+    double totalWT = 0, totalTAT = 0;
+
+    for (const auto& p : procesos) {
+        int tat = p.tiempoFinal - p.base.arrivalTime;
+        int wt = tat - p.base.burstTime;
+        totalTAT += tat;
+        totalWT += wt;
+        std::cout << p.base.pid << " - WT: " << wt << ", TAT: " << tat << "\n";
+    }
+
+    std::cout << "\nPromedio WT: " << totalWT / procesos.size()
+              << ", Promedio TAT: " << totalTAT / procesos.size() << "\n";
+}

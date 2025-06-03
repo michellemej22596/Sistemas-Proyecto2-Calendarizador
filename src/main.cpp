@@ -10,6 +10,7 @@ int main() {
     std::cout << "2. SJF\n";
     std::cout << "3. Round Robin\n";
     std::cout << "4. SRTF (Shortest Remaining Time First)\n";
+    std::cout << "5. Priority\n";
     std::cout << "Opción: ";
 
     int opcion;
@@ -31,6 +32,9 @@ int main() {
         }
         case 4:
             simularSRTF(procesos, 30);
+            break;
+        case 5:
+            simularPriority(procesos, 30);
             break;
         default:
             std::cerr << "Opción inválida.\n";
