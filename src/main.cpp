@@ -39,10 +39,23 @@ int main() {
             simularPriority(procesos, 30);
             break;
         case 6: {
-            // Carga dinámica para sincronización
-            auto recursos = Parser::cargarRecursos("../data/recursos.txt");
-            auto acciones = Parser::cargarAcciones("../data/acciones.txt");
-            ejecutarSimulacion(acciones, recursos, 30);
+            std::cout << "=== Selecciona el tipo de sincronización ===\n";
+            std::cout << "1. Mutex\n";
+            std::cout << "2. Semáforo\n";
+            std::cout << "Opción: ";
+
+            int tipoSync;
+            std::cin >> tipoSync;
+
+            if (tipoSync == 1) {
+                simularMutex();
+            } else if (tipoSync == 2) {
+                simularSemaforo();
+            } else {
+                std::cerr << "Opción de sincronización inválida.\n";
+                return 1;
+            }
+
             break;
         }
         default:
@@ -50,5 +63,5 @@ int main() {
             return 1;
     }
 
-    return 0 ;
+    return 0;
 }

@@ -35,9 +35,9 @@ void liberarRecurso(int id) {
     cv_sem.notify_one();
 }
 
-// ---------- Simulación principal ----------
-void simularMutex() {
-    std::cout << "\n=== Simulación de sincronización ===\n";
+// ---------- Simulación con semáforo ----------
+void simularSemaforo() {
+    std::cout << "\n=== Simulación de sincronización con semáforo ===\n";
 
     int contador = 0;
     std::mutex mtx_contador;
@@ -62,6 +62,39 @@ void simularMutex() {
         esperarRecurso(3);
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         liberarRecurso(3);
+        std::lock_guard<std::mutex> lock(mtx_contador);
+        contador++;
+    });
+
+    t1.join();
+    t2.join();
+    t3.join();
+
+    std::cout << "\n--- Resumen ---\n";
+    std::cout << "Total de procesos que accedieron al recurso: " << contador << std::endl;
+}
+
+// ---------- Simulación con mutex ----------
+void simularMutex() {
+    std::cout << "\n=== Simulación de sincronización con mutex ===\n";
+
+    int contador = 0;
+    std::mutex mtx_contador;
+
+    std::thread t1([&]() {
+        accederRecurso(1);
+        std::lock_guard<std::mutex> lock(mtx_contador);
+        contador++;
+    });
+
+    std::thread t2([&]() {
+        accederRecurso(2);
+        std::lock_guard<std::mutex> lock(mtx_contador);
+        contador++;
+    });
+
+    std::thread t3([&]() {
+        accederRecurso(3);
         std::lock_guard<std::mutex> lock(mtx_contador);
         contador++;
     });
