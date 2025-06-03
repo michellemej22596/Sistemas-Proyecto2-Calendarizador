@@ -1,36 +1,75 @@
 #include "sincronizacion.hpp"
 #include <iostream>
-#include <thread>  
+#include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <chrono>
 
-// Mutex global para el acceso a recursos
+// Mutex global para acceso general
 std::mutex mtx;
 
-// Función para acceder al recurso con Mutex
+// ---------- Funciones usando mutex ----------
 void accederRecurso(int id) {
-    std::lock_guard<std::mutex> lock(mtx);  // Bloqueo automático
-    std::cout << "Proceso " << id << " está accediendo al recurso." << std::endl;
+    std::lock_guard<std::mutex> lock(mtx);
+    std::cout << "[Mutex] Proceso " << id << " accede al recurso." << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 }
 
-// Semáforo simulado con mutex y condition_variable
+// ---------- Semáforo simulado ----------
 std::mutex mtx_sem;
 std::condition_variable cv_sem;
 bool recursoDisponible = true;
 
-// Función para esperar el recurso (simulando semáforo)
 void esperarRecurso(int id) {
     std::unique_lock<std::mutex> lock(mtx_sem);
-    while (!recursoDisponible) {
-        cv_sem.wait(lock);  // Espera hasta que el recurso esté disponible
-    }
-    recursoDisponible = false;  // Bloquea el recurso
-    std::cout << "Proceso " << id << " accede al recurso." << std::endl;
+    cv_sem.wait(lock, [] { return recursoDisponible; });  // Espera activa
+
+    recursoDisponible = false;
+    std::cout << "[Semáforo] Proceso " << id << " accede al recurso." << std::endl;
 }
 
-// Función para liberar el recurso (simulando semáforo)
-void liberarRecurso() {
+void liberarRecurso(int id) {
     std::lock_guard<std::mutex> lock(mtx_sem);
-    recursoDisponible = true;  // Libera el recurso
-    cv_sem.notify_one();  // Notifica a un proceso esperando
+    std::cout << "[Semáforo] Proceso " << id << " libera el recurso." << std::endl;
+    recursoDisponible = true;
+    cv_sem.notify_one();
+}
+
+// ---------- Simulación principal ----------
+void simularMutex() {
+    std::cout << "\n=== Simulación de sincronización ===\n";
+
+    int contador = 0;
+    std::mutex mtx_contador;
+
+    std::thread t1([&]() {
+        esperarRecurso(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        liberarRecurso(1);
+        std::lock_guard<std::mutex> lock(mtx_contador);
+        contador++;
+    });
+
+    std::thread t2([&]() {
+        esperarRecurso(2);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        liberarRecurso(2);
+        std::lock_guard<std::mutex> lock(mtx_contador);
+        contador++;
+    });
+
+    std::thread t3([&]() {
+        esperarRecurso(3);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        liberarRecurso(3);
+        std::lock_guard<std::mutex> lock(mtx_contador);
+        contador++;
+    });
+
+    t1.join();
+    t2.join();
+    t3.join();
+
+    std::cout << "\n--- Resumen ---\n";
+    std::cout << "Total de procesos que accedieron al recurso: " << contador << std::endl;
 }

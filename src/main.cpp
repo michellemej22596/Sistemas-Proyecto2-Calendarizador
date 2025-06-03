@@ -1,6 +1,7 @@
 #include <iostream>
 #include "parser.hpp"
 #include "simulador.hpp"
+#include "sincronizacion.hpp"  
 
 int main() {
     auto procesos = Parser::cargarProcesos("../data/procesos.txt");
@@ -11,6 +12,7 @@ int main() {
     std::cout << "3. Round Robin\n";
     std::cout << "4. SRTF (Shortest Remaining Time First)\n";
     std::cout << "5. Priority\n";
+    std::cout << "6. Simulación de sincronización (mutex)\n";
     std::cout << "Opción: ";
 
     int opcion;
@@ -35,6 +37,9 @@ int main() {
             break;
         case 5:
             simularPriority(procesos, 30);
+            break;
+        case 6:
+            simularMutex();  
             break;
         default:
             std::cerr << "Opción inválida.\n";
