@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <queue>
 #include <algorithm>
+#include "utils.hpp"
+
 
 // -------------------- MÉTRICAS Y ESTRUCTURAS --------------------
 
@@ -95,21 +97,31 @@ void ejecutarSimulacion(const std::vector<Accion>& acciones, const std::vector<R
     std::cout << "\n=== Simulación finalizada ===" << std::endl;
 }
 
-// -------------------- NUEVA FUNCIÓN: FCFS --------------------
-
-void simularFCFS(const std::vector<Proceso>& procesos, int ciclosMax) {
-    std::vector<ProcesoFCFS> todos;
-    for (const auto& p : procesos)
-        todos.emplace_back(p);
-
-    std::queue<ProcesoFCFS*> colaListos;
-    ProcesoFCFS* ejecutando = nullptr;
-    int ciclo = 0;
-
+void simularFCFS(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
     std::cout << "\n=== Simulación FCFS ===\n";
 
+    struct ProcesoFCFS {
+        Proceso base;
+        int tiempoRestante;
+        int tiempoInicio = -1;
+        int tiempoFinal = -1;
+
+        ProcesoFCFS(const Proceso& p) : base(p), tiempoRestante(p.burstTime) {}
+    };
+
+    std::vector<ProcesoFCFS> procesos;
+    for (const auto& p : procesosOriginal) {
+        procesos.emplace_back(p);
+    }
+
+    std::vector<EventoGantt> gantt;  
+
+    std::queue<ProcesoFCFS*> colaListos;
+    int ciclo = 0;
+    ProcesoFCFS* ejecutando = nullptr;
+
     while (ciclo <= ciclosMax) {
-        for (auto& p : todos) {
+        for (auto& p : procesos) {
             if (p.base.arrivalTime == ciclo) {
                 colaListos.push(&p);
                 std::cout << ">> Proceso " << p.base.pid << " ha llegado al ciclo " << ciclo << "\n";
@@ -130,42 +142,46 @@ void simularFCFS(const std::vector<Proceso>& procesos, int ciclosMax) {
             if (ejecutando->tiempoRestante == 0) {
                 ejecutando->tiempoFinal = ciclo + 1;
                 std::cout << ">> Proceso " << ejecutando->base.pid << " finalizó en ciclo " << ciclo + 1 << "\n";
+                gantt.push_back({ ejecutando->base.pid, ejecutando->tiempoInicio, ejecutando->tiempoFinal });  // ✅ agregar evento
                 ejecutando = nullptr;
             }
         } else {
             std::cout << "Ciclo " << ciclo << ": CPU ociosa\n";
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         ciclo++;
     }
 
     std::cout << "\n--- Métricas FCFS ---\n";
     double totalWT = 0, totalTAT = 0;
-    for (const auto& p : todos) {
+    for (const auto& p : procesos) {
         int tat = p.tiempoFinal - p.base.arrivalTime;
-        int wt = p.tiempoInicio - p.base.arrivalTime;
+        int wt = tat - p.base.burstTime;
         totalTAT += tat;
         totalWT += wt;
         std::cout << p.base.pid << " - WT: " << wt << ", TAT: " << tat << "\n";
     }
 
-    std::cout << "\nPromedio WT: " << totalWT / todos.size()
-              << ", Promedio TAT: " << totalTAT / todos.size() << "\n";
-}
+    std::cout << "\nPromedio WT: " << totalWT / procesos.size()
+              << ", Promedio TAT: " << totalTAT / procesos.size() << "\n";
 
-#include <algorithm>
+    guardarGanttCSV(gantt, "gantt_fcfs.csv");
+}
 
 void simularSJF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
     std::cout << "\n=== Simulación SJF ===\n";
 
-    auto procesos = procesosOriginal;  // Copia para no modificar el original
+    auto procesos = procesosOriginal;
     std::vector<Proceso> lista;
     std::vector<Proceso> completados;
+    std::vector<EventoGantt> gantt;
+
     int ciclo = 0;
     bool ejecutando = false;
     Proceso actual;
     int tiempoRestante = 0;
+    int inicioEjecucion = 0;
 
     while (ciclo <= ciclosMax) {
         for (const auto& p : procesos) {
@@ -183,6 +199,7 @@ void simularSJF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
             actual = lista.front();
             tiempoRestante = actual.burstTime;
             ejecutando = true;
+            inicioEjecucion = ciclo;
             lista.erase(lista.begin());
 
             std::cout << ">> Proceso " << actual.pid << " inicia ejecución en ciclo " << ciclo << "\n";
@@ -193,9 +210,14 @@ void simularSJF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
             tiempoRestante--;
 
             if (tiempoRestante == 0) {
-                std::cout << ">> Proceso " << actual.pid << " finalizó en ciclo " << ciclo + 1 << "\n";
+                int fin = ciclo + 1;
+                std::cout << ">> Proceso " << actual.pid << " finalizó en ciclo " << fin << "\n";
+
+                // Agregar evento al diagrama de Gantt
+                gantt.push_back({ actual.pid, inicioEjecucion, fin });
+
                 Proceso terminado = actual;
-                terminado.burstTime = ciclo + 1 - actual.arrivalTime;
+                terminado.burstTime = fin - actual.arrivalTime;  // Duración real de ejecución
                 completados.push_back(terminado);
                 ejecutando = false;
             }
@@ -206,7 +228,6 @@ void simularSJF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
         ciclo++;
     }
 
-    // Calcular métricas
     std::cout << "\n--- Métricas SJF ---\n";
     int totalWT = 0, totalTAT = 0;
 
@@ -224,6 +245,8 @@ void simularSJF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
         std::cout << "\nPromedio WT: " << (float)totalWT / completados.size()
                   << ", Promedio TAT: " << (float)totalTAT / completados.size() << "\n";
     }
+
+    guardarGanttCSV(gantt, "gantt_sjf.csv");
 }
 
 void simularRoundRobin(const std::vector<Proceso>& procesosOriginal, int quantum, int ciclosMax) {
@@ -248,6 +271,9 @@ void simularRoundRobin(const std::vector<Proceso>& procesosOriginal, int quantum
     int quantumRestante = quantum;
     ProcesoRR* ejecutando = nullptr;
 
+    std::vector<EventoGantt> gantt;
+    int inicioEjecucion = -1;
+
     while (ciclo <= ciclosMax) {
         for (auto& p : procesos) {
             if (p.base.arrivalTime == ciclo) {
@@ -262,6 +288,7 @@ void simularRoundRobin(const std::vector<Proceso>& procesosOriginal, int quantum
             if (ejecutando->tiempoInicio == -1)
                 ejecutando->tiempoInicio = ciclo;
             quantumRestante = std::min(quantum, ejecutando->tiempoRestante);
+            inicioEjecucion = ciclo;
             std::cout << ">> Proceso " << ejecutando->base.pid << " inicia/reanuda ejecución en ciclo " << ciclo << "\n";
         }
 
@@ -272,10 +299,12 @@ void simularRoundRobin(const std::vector<Proceso>& procesosOriginal, int quantum
 
             if (ejecutando->tiempoRestante == 0) {
                 ejecutando->tiempoFinal = ciclo + 1;
+                gantt.push_back({ ejecutando->base.pid, inicioEjecucion, ciclo + 1 });
                 std::cout << ">> Proceso " << ejecutando->base.pid << " finalizó en ciclo " << ciclo + 1 << "\n";
                 ejecutando = nullptr;
             } else if (quantumRestante == 0) {
-                colaListos.push(ejecutando);  // se vuelve a encolar
+                gantt.push_back({ ejecutando->base.pid, inicioEjecucion, ciclo + 1 });
+                colaListos.push(ejecutando);
                 ejecutando = nullptr;
             }
         } else {
@@ -298,6 +327,8 @@ void simularRoundRobin(const std::vector<Proceso>& procesosOriginal, int quantum
 
     std::cout << "\nPromedio WT: " << totalWT / procesos.size()
               << ", Promedio TAT: " << totalTAT / procesos.size() << "\n";
+
+    guardarGanttCSV(gantt, "gantt_rr.csv");
 }
 
 void simularSRTF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
@@ -319,6 +350,9 @@ void simularSRTF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
     std::vector<ProcesoSRTF*> listos;
     ProcesoSRTF* ejecutando = nullptr;
     int ciclo = 0;
+    int inicioEjecucion = -1;
+
+    std::vector<EventoGantt> gantt;
 
     while (ciclo <= ciclosMax) {
         for (auto& p : procesos) {
@@ -335,6 +369,7 @@ void simularSRTF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
 
             if (!ejecutando || ejecutando->tiempoRestante > listos.front()->tiempoRestante) {
                 if (ejecutando && ejecutando->tiempoRestante > 0) {
+                    gantt.push_back({ ejecutando->base.pid, inicioEjecucion, ciclo });
                     std::cout << ">> Proceso " << ejecutando->base.pid << " fue interrumpido en ciclo " << ciclo << "\n";
                     listos.push_back(ejecutando);
                 }
@@ -345,6 +380,7 @@ void simularSRTF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
                 if (ejecutando->tiempoInicio == -1)
                     ejecutando->tiempoInicio = ciclo;
 
+                inicioEjecucion = ciclo;
                 std::cout << ">> Proceso " << ejecutando->base.pid << " inicia/reanuda ejecución en ciclo " << ciclo << "\n";
             }
         }
@@ -355,6 +391,7 @@ void simularSRTF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
 
             if (ejecutando->tiempoRestante == 0) {
                 ejecutando->tiempoFinal = ciclo + 1;
+                gantt.push_back({ ejecutando->base.pid, inicioEjecucion, ciclo + 1 });
                 std::cout << ">> Proceso " << ejecutando->base.pid << " finalizó en ciclo " << ciclo + 1 << "\n";
                 ejecutando = nullptr;
             }
@@ -378,6 +415,8 @@ void simularSRTF(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
 
     std::cout << "\nPromedio WT: " << totalWT / procesos.size()
               << ", Promedio TAT: " << totalTAT / procesos.size() << "\n";
+
+    guardarGanttCSV(gantt, "gantt_srtf.csv");
 }
 
 void simularPriority(const std::vector<Proceso>& procesosOriginal, int ciclosMax) {
@@ -398,8 +437,10 @@ void simularPriority(const std::vector<Proceso>& procesosOriginal, int ciclosMax
         procesos.emplace_back(p);
     }
 
+    std::vector<EventoGantt> gantt;
     int ciclo = 0;
     ProcesoPrioridad* ejecutando = nullptr;
+    int inicioEjecucion = -1;
 
     while (ciclo <= ciclosMax) {
         for (auto& p : procesos) {
@@ -417,11 +458,14 @@ void simularPriority(const std::vector<Proceso>& procesosOriginal, int ciclosMax
 
             if (!listos.empty()) {
                 std::sort(listos.begin(), listos.end(), [](ProcesoPrioridad* a, ProcesoPrioridad* b) {
-                    return a->base.priority < b->base.priority;  // menor valor = mayor prioridad
+                    return a->base.priority < b->base.priority;  // menor = mayor prioridad
                 });
 
                 ejecutando = listos.front();
-                ejecutando->tiempoInicio = ciclo;
+                if (ejecutando->tiempoInicio == -1)
+                    ejecutando->tiempoInicio = ciclo;
+                inicioEjecucion = ciclo;
+
                 std::cout << ">> Proceso " << ejecutando->base.pid << " inicia ejecución en ciclo " << ciclo << "\n";
             }
         }
@@ -433,6 +477,7 @@ void simularPriority(const std::vector<Proceso>& procesosOriginal, int ciclosMax
             if (ejecutando->tiempoRestante == 0) {
                 ejecutando->tiempoFinal = ciclo + 1;
                 ejecutando->completado = true;
+                gantt.push_back({ ejecutando->base.pid, inicioEjecucion, ciclo + 1 });
                 std::cout << ">> Proceso " << ejecutando->base.pid << " finalizó en ciclo " << ciclo + 1 << "\n";
                 ejecutando = nullptr;
             }
@@ -457,4 +502,6 @@ void simularPriority(const std::vector<Proceso>& procesosOriginal, int ciclosMax
 
     std::cout << "\nPromedio WT: " << totalWT / procesos.size()
               << ", Promedio TAT: " << totalTAT / procesos.size() << "\n";
+
+    guardarGanttCSV(gantt, "gantt_priority.csv");
 }
