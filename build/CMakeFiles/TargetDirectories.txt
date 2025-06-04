@@ -1,0 +1,3 @@
+/Users/diederichsolis/Documents/carpeta sin título/Sistemas-Proyecto2-Calendarizador/build/CMakeFiles/SimuladorSO.dir
+/Users/diederichsolis/Documents/carpeta sin título/Sistemas-Proyecto2-Calendarizador/build/CMakeFiles/edit_cache.dir
+/Users/diederichsolis/Documents/carpeta sin título/Sistemas-Proyecto2-Calendarizador/build/CMakeFiles/rebuild_cache.dir
