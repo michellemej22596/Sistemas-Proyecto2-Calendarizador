@@ -18,7 +18,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
-// Tus headers existentes - ahora desde include/
+// Tus headers existentes
 #include "../include/parser.hpp"
 #include "../include/simulador.hpp"
 #include "../include/sincronizacion.hpp"
@@ -595,7 +595,7 @@ private:
             this->actualizarMetricas(wt, tat, completados);
         };
         
-        // Llamar a las funciones de simulación modificadas
+        // Llamar a las funciones de simulación reales adaptadas para UI
         switch (algoritmoSeleccionado) {
             case 0: 
                 simularFCFS_UI(procesosActuales, ciclosMax, callbackEvento, callbackMetricas);
@@ -616,11 +616,6 @@ private:
     }
 
     void ejecutarSimulacionSincronizacion() {
-        if (recursosActuales.empty() || accionesActuales.empty()) {
-            cargarRecursos();
-            cargarAcciones();
-        }
-        
         auto callbackEvento = [this](const std::string& pid, int ciclo, const std::string& estado, const std::string& recurso) {
             this->agregarEventoUI(pid, ciclo, estado, recurso);
             this->cicloActual = ciclo;
@@ -666,8 +661,7 @@ private:
         reiniciarSimulacion();
     }
 
-    // ==================== FUNCIONES DE SIMULACIÓN UI ====================
-    // (Las mismas funciones de simulación que antes...)
+    // ==================== FUNCIONES DE SIMULACIÓN UI COMPLETAS ====================
 
     void simularFCFS_UI(const std::vector<Proceso>& procesos, int ciclosMax,
                        std::function<void(const std::string&, int, const std::string&)> callback,
@@ -690,12 +684,14 @@ private:
         int ciclo = 0;
 
         while (ciclo <= ciclosMax && simulacionActiva) {
+            // Pausa si está pausado
             while (simulacionPausada && simulacionActiva) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
             
             if (!simulacionActiva) break;
 
+            // Llegada de procesos
             for (auto& p : todos) {
                 if (p.base.arrivalTime == ciclo) {
                     colaListos.push(&p);
@@ -703,12 +699,14 @@ private:
                 }
             }
 
+            // Selección de proceso
             if (!ejecutando && !colaListos.empty()) {
                 ejecutando = colaListos.front();
                 colaListos.pop();
                 ejecutando->tiempoInicio = ciclo;
             }
 
+            // Ejecución
             if (ejecutando) {
                 callback(ejecutando->base.pid, ciclo, "EJECUTANDO");
                 ejecutando->tiempoRestante--;
@@ -720,6 +718,7 @@ private:
                 }
             }
 
+            // Calcular métricas
             double totalWT = 0, totalTAT = 0;
             int completados = 0;
             for (const auto& p : todos) {
@@ -741,37 +740,434 @@ private:
         }
     }
 
-    // Implementar las otras funciones de simulación de manera similar...
     void simularSJF_UI(const std::vector<Proceso>& procesos, int ciclosMax,
                       std::function<void(const std::string&, int, const std::string&)> callback,
                       std::function<void(double, double, int)> metricsCallback) {
-        // Implementación similar a FCFS pero con lógica SJF
+        
+        struct ProcesoSJF {
+            Proceso base;
+            int tiempoInicio = -1;
+            int tiempoFinal = -1;
+            bool completado = false;
+            ProcesoSJF(Proceso p) : base(p) {}
+        };
+
+        std::vector<ProcesoSJF> todos;
+        for (const auto& p : procesos)
+            todos.emplace_back(p);
+
+        int ciclo = 0;
+        ProcesoSJF* ejecutando = nullptr;
+        int tiempoRestante = 0;
+
+        while (ciclo <= ciclosMax && simulacionActiva) {
+            while (simulacionPausada && simulacionActiva) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            
+            if (!simulacionActiva) break;
+
+            // Llegada de procesos
+            for (auto& p : todos) {
+                if (p.base.arrivalTime == ciclo) {
+                    callback(p.base.pid, ciclo, "LLEGADA");
+                }
+            }
+
+            // Selección de proceso (SJF)
+            if (!ejecutando) {
+                ProcesoSJF* siguiente = nullptr;
+                for (auto& p : todos) {
+                    if (!p.completado && p.base.arrivalTime <= ciclo) {
+                        if (!siguiente || p.base.burstTime < siguiente->base.burstTime) {
+                            siguiente = &p;
+                        }
+                    }
+                }
+                
+                if (siguiente) {
+                    ejecutando = siguiente;
+                    ejecutando->tiempoInicio = ciclo;
+                    tiempoRestante = ejecutando->base.burstTime;
+                }
+            }
+
+            // Ejecución
+            if (ejecutando) {
+                callback(ejecutando->base.pid, ciclo, "EJECUTANDO");
+                tiempoRestante--;
+
+                if (tiempoRestante == 0) {
+                    ejecutando->tiempoFinal = ciclo + 1;
+                    ejecutando->completado = true;
+                    callback(ejecutando->base.pid, ciclo, "TERMINADO");
+                    ejecutando = nullptr;
+                }
+            }
+
+            // Calcular métricas
+            double totalWT = 0, totalTAT = 0;
+            int completados = 0;
+            for (const auto& p : todos) {
+                if (p.completado) {
+                    int tat = p.tiempoFinal - p.base.arrivalTime;
+                    int wt = p.tiempoInicio - p.base.arrivalTime;
+                    totalTAT += tat;
+                    totalWT += wt;
+                    completados++;
+                }
+            }
+            
+            if (completados > 0) {
+                metricsCallback(totalWT / completados, totalTAT / completados, completados);
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            ciclo++;
+        }
     }
 
     void simularRoundRobin_UI(const std::vector<Proceso>& procesos, int quantum, int ciclosMax,
                              std::function<void(const std::string&, int, const std::string&)> callback,
                              std::function<void(double, double, int)> metricsCallback) {
-        // Implementación Round Robin
+        
+        struct ProcesoRR {
+            Proceso base;
+            int tiempoRestante;
+            int tiempoInicio = -1;
+            int tiempoFinal = -1;
+            ProcesoRR(const Proceso& p) : base(p), tiempoRestante(p.burstTime) {}
+        };
+
+        std::vector<ProcesoRR> todos;
+        for (const auto& p : procesos) {
+            todos.emplace_back(p);
+        }
+
+        std::queue<ProcesoRR*> colaListos;
+        int ciclo = 0;
+        int quantumRestante = quantum;
+        ProcesoRR* ejecutando = nullptr;
+
+        while (ciclo <= ciclosMax && simulacionActiva) {
+            while (simulacionPausada && simulacionActiva) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            
+            if (!simulacionActiva) break;
+
+            // Llegada de procesos
+            for (auto& p : todos) {
+                if (p.base.arrivalTime == ciclo) {
+                    colaListos.push(&p);
+                    callback(p.base.pid, ciclo, "LLEGADA");
+                }
+            }
+
+            // Selección de proceso
+            if (!ejecutando && !colaListos.empty()) {
+                ejecutando = colaListos.front();
+                colaListos.pop();
+                if (ejecutando->tiempoInicio == -1)
+                    ejecutando->tiempoInicio = ciclo;
+                quantumRestante = std::min(quantum, ejecutando->tiempoRestante);
+            }
+
+            // Ejecución
+            if (ejecutando) {
+                callback(ejecutando->base.pid, ciclo, "EJECUTANDO");
+                ejecutando->tiempoRestante--;
+                quantumRestante--;
+
+                if (ejecutando->tiempoRestante == 0) {
+                    ejecutando->tiempoFinal = ciclo + 1;
+                    callback(ejecutando->base.pid, ciclo, "TERMINADO");
+                    ejecutando = nullptr;
+                } else if (quantumRestante == 0) {
+                    callback(ejecutando->base.pid, ciclo, "QUANTUM_AGOTADO");
+                    colaListos.push(ejecutando);
+                    ejecutando = nullptr;
+                }
+            }
+
+            // Calcular métricas
+            double totalWT = 0, totalTAT = 0;
+            int completados = 0;
+            
+            std::unordered_map<std::string, int> tiempoFinal;
+            for (const auto& p : todos) {
+                if (p.tiempoFinal > 0) {
+                    tiempoFinal[p.base.pid] = p.tiempoFinal;
+                }
+            }
+
+            for (const auto& p : procesos) {
+                if (tiempoFinal.find(p.pid) != tiempoFinal.end()) {
+                    int tat = tiempoFinal[p.pid] - p.arrivalTime;
+                    int wt = tat - p.burstTime;
+                    totalTAT += tat;
+                    totalWT += wt;
+                    completados++;
+                }
+            }
+            
+            if (completados > 0) {
+                metricsCallback(totalWT / completados, totalTAT / completados, completados);
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            ciclo++;
+        }
     }
 
     void simularSRTF_UI(const std::vector<Proceso>& procesos, int ciclosMax,
                        std::function<void(const std::string&, int, const std::string&)> callback,
                        std::function<void(double, double, int)> metricsCallback) {
-        // Implementación SRTF
+        
+        struct ProcesoSRTF {
+            Proceso base;
+            int tiempoRestante;
+            int tiempoInicio = -1;
+            int tiempoFinal = -1;
+            ProcesoSRTF(const Proceso& p) : base(p), tiempoRestante(p.burstTime) {}
+        };
+
+        std::vector<ProcesoSRTF> todos;
+        for (const auto& p : procesos)
+            todos.emplace_back(p);
+
+        std::vector<ProcesoSRTF*> listos;
+        ProcesoSRTF* ejecutando = nullptr;
+        int ciclo = 0;
+
+        while (ciclo <= ciclosMax && simulacionActiva) {
+            while (simulacionPausada && simulacionActiva) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            
+            if (!simulacionActiva) break;
+
+            // Llegada de procesos
+            for (auto& p : todos) {
+                if (p.base.arrivalTime == ciclo) {
+                    listos.push_back(&p);
+                    callback(p.base.pid, ciclo, "LLEGADA");
+                }
+            }
+
+            // Selección/preempción (SRTF)
+            if (!listos.empty()) {
+                std::sort(listos.begin(), listos.end(), [](ProcesoSRTF* a, ProcesoSRTF* b) {
+                    return a->tiempoRestante < b->tiempoRestante;
+                });
+
+                if (!ejecutando || ejecutando->tiempoRestante > listos.front()->tiempoRestante) {
+                    if (ejecutando && ejecutando->tiempoRestante > 0) {
+                        callback(ejecutando->base.pid, ciclo, "PREEMPTADO");
+                        listos.push_back(ejecutando);
+                    }
+
+                    ejecutando = listos.front();
+                    listos.erase(listos.begin());
+
+                    if (ejecutando->tiempoInicio == -1)
+                        ejecutando->tiempoInicio = ciclo;
+                }
+            }
+
+            // Ejecución
+            if (ejecutando) {
+                callback(ejecutando->base.pid, ciclo, "EJECUTANDO");
+                ejecutando->tiempoRestante--;
+
+                if (ejecutando->tiempoRestante == 0) {
+                    ejecutando->tiempoFinal = ciclo + 1;
+                    callback(ejecutando->base.pid, ciclo, "TERMINADO");
+                    ejecutando = nullptr;
+                }
+            }
+
+            // Calcular métricas
+            double totalWT = 0, totalTAT = 0;
+            int completados = 0;
+            for (const auto& p : todos) {
+                if (p.tiempoFinal > 0) {
+                    int tat = p.tiempoFinal - p.base.arrivalTime;
+                    int wt = tat - p.base.burstTime;
+                    totalTAT += tat;
+                    totalWT += wt;
+                    completados++;
+                }
+            }
+            
+            if (completados > 0) {
+                metricsCallback(totalWT / completados, totalTAT / completados, completados);
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            ciclo++;
+        }
     }
 
     void simularPriority_UI(const std::vector<Proceso>& procesos, int ciclosMax,
                            std::function<void(const std::string&, int, const std::string&)> callback,
                            std::function<void(double, double, int)> metricsCallback) {
-        // Implementación Priority
+        
+        struct ProcesoPrioridad {
+            Proceso base;
+            int tiempoRestante;
+            int tiempoInicio = -1;
+            int tiempoFinal = -1;
+            bool completado = false;
+            ProcesoPrioridad(const Proceso& p) : base(p), tiempoRestante(p.burstTime) {}
+        };
+
+        std::vector<ProcesoPrioridad> todos;
+        for (const auto& p : procesos) {
+            todos.emplace_back(p);
+        }
+
+        int ciclo = 0;
+        ProcesoPrioridad* ejecutando = nullptr;
+
+        while (ciclo <= ciclosMax && simulacionActiva) {
+            while (simulacionPausada && simulacionActiva) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            
+            if (!simulacionActiva) break;
+
+            // Llegada de procesos
+            for (auto& p : todos) {
+                if (p.base.arrivalTime == ciclo) {
+                    callback(p.base.pid, ciclo, "LLEGADA");
+                }
+            }
+
+            // Selección de proceso (Priority)
+            if (!ejecutando) {
+                std::vector<ProcesoPrioridad*> listos;
+                for (auto& p : todos) {
+                    if (!p.completado && p.base.arrivalTime <= ciclo)
+                        listos.push_back(&p);
+                }
+
+                if (!listos.empty()) {
+                    std::sort(listos.begin(), listos.end(), [](ProcesoPrioridad* a, ProcesoPrioridad* b) {
+                        return a->base.priority < b->base.priority;  // menor = mayor prioridad
+                    });
+
+                    ejecutando = listos.front();
+                    if (ejecutando->tiempoInicio == -1)
+                        ejecutando->tiempoInicio = ciclo;
+                }
+            }
+
+            // Ejecución
+            if (ejecutando) {
+                callback(ejecutando->base.pid, ciclo, "EJECUTANDO");
+                ejecutando->tiempoRestante--;
+
+                if (ejecutando->tiempoRestante == 0) {
+                    ejecutando->tiempoFinal = ciclo + 1;
+                    ejecutando->completado = true;
+                    callback(ejecutando->base.pid, ciclo, "TERMINADO");
+                    ejecutando = nullptr;
+                }
+            }
+
+            // Calcular métricas
+            double totalWT = 0, totalTAT = 0;
+            int completados = 0;
+
+            for (const auto& p : todos) {
+                if (p.completado) {
+                    int tat = p.tiempoFinal - p.base.arrivalTime;
+                    int wt = tat - p.base.burstTime;
+                    totalTAT += tat;
+                    totalWT += wt;
+                    completados++;
+                }
+            }
+            
+            if (completados > 0) {
+                metricsCallback(totalWT / completados, totalTAT / completados, completados);
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            ciclo++;
+        }
     }
 
     void simularMutex_UI(std::function<void(const std::string&, int, const std::string&, const std::string&)> callback) {
-        // Implementación Mutex
+        // Simulación de mutex adaptada para UI
+        std::vector<std::string> procesos = {"P1", "P2", "P3"};
+        std::mutex recursoMutex;
+        int ciclo = 0;
+
+        auto procesoHilo = [&](const std::string& pid, int delay) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(delay * 200));
+            
+            callback(pid, ciclo + delay, "WAITING", "R1");
+            
+            {
+                std::lock_guard<std::mutex> lock(recursoMutex);
+                callback(pid, ciclo + delay + 1, "ACCESED", "R1");
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            }
+            
+            callback(pid, ciclo + delay + 3, "TERMINADO", "R1");
+        };
+
+        std::vector<std::thread> hilos;
+        for (size_t i = 0; i < procesos.size(); ++i) {
+            hilos.emplace_back(procesoHilo, procesos[i], i);
+        }
+
+        for (auto& h : hilos) {
+            if (h.joinable()) h.join();
+        }
     }
 
     void simularSemaforo_UI(std::function<void(const std::string&, int, const std::string&, const std::string&)> callback) {
-        // Implementación Semáforo
+        // Simulación de semáforo adaptada para UI
+        std::vector<std::string> procesos = {"P1", "P2", "P3", "P4"};
+        std::mutex semaforoMutex;
+        std::condition_variable cv;
+        int recursos = 2; // Semáforo con 2 recursos
+        int ciclo = 0;
+
+        auto procesoHilo = [&](const std::string& pid, int delay) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(delay * 200));
+            
+            callback(pid, ciclo + delay, "WAITING", "R1");
+            
+            {
+                std::unique_lock<std::mutex> lock(semaforoMutex);
+                cv.wait(lock, [&] { return recursos > 0; });
+                recursos--;
+                
+                callback(pid, ciclo + delay + 1, "ACCESED", "R1");
+                lock.unlock();
+                
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                
+                lock.lock();
+                recursos++;
+                cv.notify_one();
+            }
+            
+            callback(pid, ciclo + delay + 3, "TERMINADO", "R1");
+        };
+
+        std::vector<std::thread> hilos;
+        for (size_t i = 0; i < procesos.size(); ++i) {
+            hilos.emplace_back(procesoHilo, procesos[i], i);
+        }
+
+        for (auto& h : hilos) {
+            if (h.joinable()) h.join();
+        }
     }
 };
 
@@ -805,12 +1201,11 @@ int main() {
         return -1;
     }
 
-    // Configurar Dear ImGui (SIN docking)
+    // Configurar Dear ImGui
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    // REMOVIDO: io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     ImGui::StyleColorsDark();
     
